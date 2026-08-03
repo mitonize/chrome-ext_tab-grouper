@@ -1,0 +1,10 @@
+{
+  "saveDomainRuleContextMenuTitle": {
+    "message": "このドメインを常にこのグループで開く",
+    "description": "Tab context menu item that saves the clicked tab domain as a rule for the current tab group."
+  },
+  "saveUrlRuleContextMenuTitle": {
+    "message": "このURLを常にこのグループで開く",
+    "description": "Tab context menu item that saves the clicked tab URL as a rule for the current tab group."
+  }
+}

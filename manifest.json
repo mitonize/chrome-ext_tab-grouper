@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Edge Tab Auto Organizer",
+  "version": "0.1.0",
+  "default_locale": "ja",
+  "description": "Groups inactive tabs and tabs spawned from the same source so they can be reviewed and closed safely.",
+  "permissions": ["tabs", "tabGroups", "storage", "alarms", "contextMenus", "webNavigation"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_title": "Tab Organizer",
+    "default_popup": "src/popup.html"
+  }
+}

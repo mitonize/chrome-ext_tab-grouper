@@ -1,0 +1,9 @@
+# OS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Node.js and test output
+node_modules/
+coverage/
+*.log
