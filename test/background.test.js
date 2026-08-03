@@ -17,20 +17,21 @@ function createEvent() {
   };
 }
 
-function createHarness(initialTabs) {
+function createHarness(initialTabs, initialStorage = {}) {
   const tabsById = new Map(initialTabs.map((tab) => [tab.id, { ...tab }]));
   const removedTabIds = [];
-  const storage = {};
+  const storage = { ...initialStorage };
   const events = {
     created: createEvent(),
-    updated: createEvent()
+    updated: createEvent(),
+    message: createEvent()
   };
 
   const chrome = {
     runtime: {
       onInstalled: createEvent(),
       onStartup: createEvent(),
-      onMessage: createEvent()
+      onMessage: events.message
     },
     alarms: {
       onAlarm: createEvent(),
@@ -251,4 +252,97 @@ test("still closes a genuinely duplicate tab after loading completes", async () 
   await new Promise(setImmediate);
 
   assert.deepEqual(harness.removedTabIds, [2]);
+});
+
+test("does not deduplicate an externally opened excluded URL", async () => {
+  const redirectUrl = "https://safelinks.example/redirect?token=123";
+  const harness = createHarness(
+    [
+      {
+        id: 1,
+        windowId: 1,
+        url: redirectUrl,
+        active: false,
+        pinned: false,
+        incognito: false,
+        groupId: -1
+      },
+      {
+        id: 2,
+        windowId: 1,
+        url: "about:blank",
+        pendingUrl: redirectUrl,
+        active: true,
+        pinned: false,
+        incognito: false,
+        groupId: -1
+      }
+    ],
+    {
+      settings: {
+        excludedUrlPatterns: ["https://safelinks.example/"]
+      }
+    }
+  );
+
+  harness.events.created.listener({
+    id: 2,
+    windowId: 1,
+    url: "about:blank",
+    pendingUrl: redirectUrl,
+    active: true,
+    pinned: false,
+    incognito: false,
+    groupId: -1
+  });
+  await new Promise(setImmediate);
+
+  harness.setTab({
+    id: 2,
+    windowId: 1,
+    url: redirectUrl,
+    active: true,
+    pinned: false,
+    incognito: false,
+    groupId: -1
+  });
+  harness.events.updated.listener(
+    2,
+    { status: "complete" },
+    {
+      id: 2,
+      windowId: 1,
+      url: redirectUrl,
+      active: true,
+      pinned: false,
+      incognito: false,
+      groupId: -1
+    }
+  );
+  await new Promise(setImmediate);
+  await new Promise(setImmediate);
+
+  assert.deepEqual(harness.removedTabIds, []);
+});
+
+test("saves and removes normalized URL exclusions", async () => {
+  const harness = createHarness([]);
+  const sendMessage = (message) =>
+    new Promise((resolve) => {
+      harness.events.message.listener(message, {}, resolve);
+    });
+
+  const saved = await sendMessage({
+    type: "saveExcludedUrlPattern",
+    pattern: " https://safelinks.example/#redirect* "
+  });
+  assert.equal(saved.ok, true);
+  assert.deepEqual(Array.from(saved.excludedUrlPatterns), ["https://safelinks.example/"]);
+
+  const removed = await sendMessage({
+    type: "removeExcludedUrlPattern",
+    pattern: "https://safelinks.example/"
+  });
+  assert.equal(removed.ok, true);
+  assert.deepEqual(Array.from(removed.excludedUrlPatterns), []);
 });

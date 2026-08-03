@@ -16,7 +16,8 @@ const DEFAULT_SETTINGS = {
   inactiveThresholdMs: 24 * 60 * 60 * 1000,
   scanIntervalMinutes: 15,
   inferredOpenerWindowMs: 2000,
-  closeHistoryLimit: 200
+  closeHistoryLimit: 200,
+  excludedUrlPatterns: []
 };
 
 let lastActiveByWindow = new Map();
@@ -79,6 +80,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "applyDomainRules") {
     applyDomainRulesToOpenTabs().then((result) => sendResponse({ ok: true, result }));
+    return true;
+  }
+
+  if (message?.type === "saveExcludedUrlPattern") {
+    saveExcludedUrlPattern(message.pattern).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "removeExcludedUrlPattern") {
+    removeExcludedUrlPattern(message.pattern).then(sendResponse);
     return true;
   }
 
@@ -176,6 +187,9 @@ async function focusExistingTabForBookmarkNavigation(details) {
   const currentTab = await safeGetTab(details.tabId);
   if (!currentTab) return;
 
+  const { settings } = await getState();
+  if (isExcludedUrl(details.url, settings.excludedUrlPatterns)) return;
+
   const existingTab = await findExistingTabByUrl(details.url, details.tabId);
   if (!existingTab || !Number.isInteger(existingTab.id)) return;
 
@@ -187,6 +201,11 @@ async function focusExistingTabForBookmarkNavigation(details) {
 async function focusExistingTabForNewTab(tabId) {
   const tab = await safeGetTab(tabId);
   if (!tab || !Number.isInteger(tab.id)) return false;
+
+  const { settings } = await getState();
+  if (isExcludedUrl(tab.url || tab.pendingUrl || "", settings.excludedUrlPatterns)) {
+    return false;
+  }
 
   const existingTab = await findExistingTabByUrl(tab.url || tab.pendingUrl || "", tab.id);
   if (!existingTab || !Number.isInteger(existingTab.id)) return false;
@@ -393,6 +412,8 @@ async function groupSpawnedTab(tabId, openerTabId) {
   ]);
 
   if (!tab || !opener) return;
+  const { settings } = await getState();
+  if (isExcludedUrl(tab.url || tab.pendingUrl || "", settings.excludedUrlPatterns)) return;
   if (!canGroupTab(tab) || !canGroupTab(opener)) return;
   if (isAlreadyGrouped(tab)) return;
   if (tab.windowId !== opener.windowId) return;
@@ -425,6 +446,10 @@ async function groupInactiveTabs() {
     const lastActiveAt = meta?.lastActiveAt || meta?.createdAt || now;
 
     if (!isInactiveCandidate(tab, lastActiveAt, now, settings.inactiveThresholdMs)) {
+      continue;
+    }
+
+    if (isExcludedUrl(tab.url || tab.pendingUrl || "", settings.excludedUrlPatterns)) {
       continue;
     }
 
@@ -531,6 +556,46 @@ async function saveUrlRuleForTab(tab) {
   return { ok: true, rule: urlGroupRules[normalizedUrl], result };
 }
 
+async function saveExcludedUrlPattern(rawPattern) {
+  const pattern = normalizeExcludedUrlPattern(rawPattern);
+  if (!pattern) {
+    return { ok: false, error: "Enter a valid http(s) URL." };
+  }
+
+  const { settings } = await getState();
+  if (settings.excludedUrlPatterns.includes(pattern)) {
+    return { ok: false, error: "This URL is already excluded." };
+  }
+
+  const excludedUrlPatterns = [...settings.excludedUrlPatterns, pattern];
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.settings]: {
+      ...settings,
+      excludedUrlPatterns
+    }
+  });
+  return { ok: true, excludedUrlPatterns };
+}
+
+async function removeExcludedUrlPattern(rawPattern) {
+  const pattern = normalizeExcludedUrlPattern(rawPattern);
+  if (!pattern) {
+    return { ok: false, error: "The excluded URL is invalid." };
+  }
+
+  const { settings } = await getState();
+  const excludedUrlPatterns = settings.excludedUrlPatterns.filter(
+    (candidate) => candidate !== pattern
+  );
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.settings]: {
+      ...settings,
+      excludedUrlPatterns
+    }
+  });
+  return { ok: true, excludedUrlPatterns };
+}
+
 async function applyDomainRulesToOpenTabs() {
   const { domainGroupRules, urlGroupRules } = await getState();
   let groupedCount = 0;
@@ -550,12 +615,13 @@ async function applyDomainRulesToOpenTabs() {
 
 async function applyUrlRule(url, rule) {
   const tabs = await chrome.tabs.query({});
+  const { settings } = await getState();
   let groupedCount = 0;
 
   for (const tab of tabs) {
     if (!Number.isInteger(tab.id)) continue;
     if (normalizeUrlForComparison(tab.url || tab.pendingUrl || "") !== url) continue;
-    if (!(await moveTabToRuleGroup(tab, rule))) continue;
+    if (!(await moveTabToRuleGroup(tab, rule, settings.excludedUrlPatterns))) continue;
     groupedCount += 1;
   }
 
@@ -564,12 +630,13 @@ async function applyUrlRule(url, rule) {
 
 async function applyDomainRule(domain, rule) {
   const tabs = await chrome.tabs.query({});
+  const { settings } = await getState();
   let groupedCount = 0;
 
   for (const tab of tabs) {
     if (!Number.isInteger(tab.id)) continue;
     if (getDomain(tab.url || tab.pendingUrl || "") !== domain) continue;
-    if (!(await moveTabToRuleGroup(tab, rule))) continue;
+    if (!(await moveTabToRuleGroup(tab, rule, settings.excludedUrlPatterns))) continue;
     groupedCount += 1;
   }
 
@@ -580,22 +647,26 @@ async function applyDomainRuleToTab(tabId) {
   const tab = await safeGetTab(tabId);
   if (!tab) return false;
 
-  const { domainGroupRules, urlGroupRules } = await getState();
+  const { domainGroupRules, urlGroupRules, settings } = await getState();
   const normalizedUrl = normalizeUrlForComparison(tab.url || tab.pendingUrl || "");
+  if (isExcludedUrl(tab.url || tab.pendingUrl || "", settings.excludedUrlPatterns)) {
+    return false;
+  }
   const urlRule = urlGroupRules[normalizedUrl];
   if (urlRule) {
-    return moveTabToRuleGroup(tab, urlRule);
+    return moveTabToRuleGroup(tab, urlRule, settings.excludedUrlPatterns);
   }
 
   const domain = getDomain(tab.url || tab.pendingUrl || "");
   const rule = domainGroupRules[domain];
   if (!rule) return false;
 
-  return moveTabToRuleGroup(tab, rule);
+  return moveTabToRuleGroup(tab, rule, settings.excludedUrlPatterns);
 }
 
-async function moveTabToRuleGroup(tab, rule) {
+async function moveTabToRuleGroup(tab, rule, excludedUrlPatterns = []) {
   if (!canGroupTab(tab)) return false;
+  if (isExcludedUrl(tab.url || tab.pendingUrl || "", excludedUrlPatterns)) return false;
   if (tab.pinned) return false;
   if (isAlreadyGrouped(tab)) return false;
 
@@ -786,6 +857,7 @@ async function handleGetDashboard() {
   return {
     ok: true,
     inactiveThresholdMs: state.settings.inactiveThresholdMs,
+    excludedUrlPatterns: state.settings.excludedUrlPatterns,
     activeTab: activeTab
       ? {
           id: activeTab.id,
@@ -871,6 +943,11 @@ async function getState() {
     [STORAGE_KEYS.settings]: DEFAULT_SETTINGS
   });
 
+  const storedSettings = state[STORAGE_KEYS.settings] || {};
+  const excludedUrlPatterns = Array.isArray(storedSettings.excludedUrlPatterns)
+    ? storedSettings.excludedUrlPatterns.map(normalizeExcludedUrlPattern).filter(Boolean)
+    : [];
+
   return {
     tabMetadata: state[STORAGE_KEYS.tabMetadata] || {},
     closeHistory: state[STORAGE_KEYS.closeHistory] || [],
@@ -878,7 +955,8 @@ async function getState() {
     urlGroupRules: state[STORAGE_KEYS.urlGroupRules] || {},
     settings: {
       ...DEFAULT_SETTINGS,
-      ...(state[STORAGE_KEYS.settings] || {})
+      ...storedSettings,
+      excludedUrlPatterns
     }
   };
 }
@@ -938,6 +1016,38 @@ function normalizeUrlForComparison(url) {
   } catch (_error) {
     return "";
   }
+}
+
+function normalizeExcludedUrlPattern(rawPattern) {
+  if (typeof rawPattern !== "string") return "";
+
+  const value = rawPattern.trim().replace(/\*$/, "");
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    parsed.hash = "";
+    return parsed.href;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function isExcludedUrl(url, excludedUrlPatterns = []) {
+  const normalizedUrl = normalizeUrlForComparison(url);
+  if (!normalizedUrl || !Array.isArray(excludedUrlPatterns)) return false;
+
+  return excludedUrlPatterns.some((rawPattern) => {
+    const pattern = normalizeExcludedUrlPattern(rawPattern);
+    if (!pattern) return false;
+    if (normalizedUrl === pattern) return true;
+    if (pattern.endsWith("/")) return normalizedUrl.startsWith(pattern);
+
+    return ["/", "?", "&"].some((separator) =>
+      normalizedUrl.startsWith(`${pattern}${separator}`)
+    );
+  });
 }
 
 function limitText(value, maxLength) {

@@ -28,6 +28,22 @@
         <ul id="domainRuleList" class="ruleList"></ul>
       </section>
 
+      <section class="excludedUrls" aria-label="Excluded URLs">
+        <h2>Auto-group URL exclusions</h2>
+        <p>Excluded URLs are not grouped or deduplicated. URL paths are matched by prefix.</p>
+        <div class="excludedUrlForm">
+          <input
+            id="excludedUrlInput"
+            type="url"
+            placeholder="https://safelinks.example/"
+            autocomplete="off"
+          >
+          <button id="addExcludedUrlButton" type="button">Add</button>
+        </div>
+        <p id="excludedUrlStatus" role="status"></p>
+        <ul id="excludedUrlList" class="ruleList"></ul>
+      </section>
+
       <section class="list" aria-label="Inactive tabs">
         <div id="emptyState" class="empty" hidden>No inactive tabs grouped.</div>
         <ul id="tabList"></ul>
