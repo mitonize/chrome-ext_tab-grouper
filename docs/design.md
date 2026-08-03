@@ -164,7 +164,15 @@ When a tab is automatically moved by a domain rule or spawned-tab grouping, the 
 4. If the active tab is ungrouped, all groups in the same window are collapsed.
 5. Domain/URL rule grouping and spawned-tab grouping also collapse other groups after expanding their destination group.
 
-## 9. Duplicate Group Cleanup Flow
+## 9. Auto-group URL Exclusion Flow
+
+1. The popup accepts an `http` or `https` URL and stores it in `settings.excludedUrlPatterns` in `chrome.storage.local`.
+2. A URL is excluded when it matches the registered normalized URL or a path descendant. A pattern ending in `/` matches the whole host subtree.
+3. Before automatic grouping, the service worker checks the current URL against the exclusion list.
+4. Before duplicate URL correction, the service worker performs the same check so an excluded redirect/security-check URL is never focused, consolidated, or closed automatically.
+5. Manual grouping remains available. If a later navigation changes to a non-excluded final URL, normal rules can apply to that final URL.
+
+## 10. Duplicate Group Cleanup Flow
 
 1. User clicks `Merge duplicate groups` in the popup.
 2. The service worker queries all tab groups.
@@ -172,7 +180,7 @@ When a tab is automatically moved by a domain rule or spawned-tab grouping, the 
 4. For each bucket with multiple groups, tabs from later groups are moved into the first group.
 5. Groups with different names are left untouched.
 
-## 10. Duplicate URL Navigation Flow
+## 11. Duplicate URL Navigation Flow
 
 1. When a top-level navigation commits, the service worker checks `transitionType`.
 2. If the transition is `auto_bookmark`, it searches for another open tab with the same URL.

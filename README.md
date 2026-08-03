@@ -10,6 +10,7 @@ Microsoft Edge extension that groups inactive tabs and tabs opened from the same
 - Save a manually grouped tab's domain as a reusable grouping rule
 - Save a manually grouped tab's URL as a reusable grouping rule
 - Focus an existing matching tab when a bookmark, history item, or new tab opens a URL that is already open
+- Exclude configured URL prefixes from automatic grouping and duplicate-tab handling
 - Keep at most one tab group expanded per window based on the active tab
 - Merge duplicate same-name tab groups from the popup
 
@@ -48,6 +49,12 @@ The popup button `Always use this group for domain` performs the same action for
 Use `このURLを常にこのグループで開く` to save a stricter URL rule. URL rules match the normalized URL exactly, ignoring fragments, and take precedence over domain rules.
 
 Domain rules are stored locally and take precedence over spawned-tab topic grouping.
+
+## Auto-group URL Exclusions
+
+Use `Auto-group URL exclusions` in the popup to add an `http` or `https` URL. The URL itself and its path descendants are excluded from automatic grouping, domain/URL rules, inactive-tab grouping, and duplicate-tab focusing/closing. A URL ending with `/` can be used to exclude an entire host, for example `https://safelinks.example/`.
+
+The entries are stored locally in `chrome.storage.local`. Removing an entry enables the normal automatic behavior again.
 
 ## Duplicate URL Deduplication
 

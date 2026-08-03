@@ -85,6 +85,41 @@ p {
   width: 100%;
 }
 
+.excludedUrls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+}
+
+h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.excludedUrlForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+input {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: CanvasText;
+  background: Canvas;
+  font: inherit;
+}
+
+.removeRuleButton {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
 .ruleList {
   gap: 6px;
 }

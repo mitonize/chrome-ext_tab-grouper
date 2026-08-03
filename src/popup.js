@@ -7,6 +7,10 @@ const elements = {
   saveDomainRuleButton: document.getElementById("saveDomainRuleButton"),
   domainRuleStatus: document.getElementById("domainRuleStatus"),
   domainRuleList: document.getElementById("domainRuleList"),
+  excludedUrlInput: document.getElementById("excludedUrlInput"),
+  addExcludedUrlButton: document.getElementById("addExcludedUrlButton"),
+  excludedUrlStatus: document.getElementById("excludedUrlStatus"),
+  excludedUrlList: document.getElementById("excludedUrlList"),
   emptyState: document.getElementById("emptyState"),
   tabList: document.getElementById("tabList")
 };
@@ -56,6 +60,26 @@ elements.saveDomainRuleButton.addEventListener("click", async () => {
     : response?.error || "Unable to save domain rule.";
 });
 
+elements.addExcludedUrlButton.addEventListener("click", async () => {
+  const pattern = elements.excludedUrlInput.value.trim();
+  if (!pattern) {
+    elements.excludedUrlStatus.textContent = "Enter a URL first.";
+    return;
+  }
+
+  const response = await withBusyState(async () => {
+    return chrome.runtime.sendMessage({
+      type: "saveExcludedUrlPattern",
+      pattern
+    });
+  });
+  elements.excludedUrlStatus.textContent = response?.ok
+    ? "URL exclusion saved."
+    : response?.error || "Unable to save URL exclusion.";
+  if (response?.ok) elements.excludedUrlInput.value = "";
+  await render();
+});
+
 void render();
 
 async function render() {
@@ -68,6 +92,7 @@ async function render() {
 
   const tabs = dashboard.inactiveTabs || [];
   const rules = dashboard.domainGroupRules || [];
+  const excludedUrlPatterns = dashboard.excludedUrlPatterns || [];
   const activeTab = dashboard.activeTab;
   elements.summary.textContent = `${tabs.length} inactive tabs grouped`;
   elements.closeButton.disabled = tabs.length === 0;
@@ -78,6 +103,7 @@ async function render() {
       : "Group the active tab first to save a domain rule.";
   elements.emptyState.hidden = tabs.length !== 0;
   elements.domainRuleList.replaceChildren(...rules.map(renderRule));
+  elements.excludedUrlList.replaceChildren(...excludedUrlPatterns.map(renderExcludedUrl));
   elements.tabList.replaceChildren(...tabs.map(renderTab));
 }
 
@@ -92,6 +118,35 @@ function renderRule(rule) {
   group.textContent = rule.groupTitle;
 
   item.append(domain, group);
+  return item;
+}
+
+function renderExcludedUrl(pattern) {
+  const item = document.createElement("li");
+  item.className = "ruleItem";
+
+  const value = document.createElement("span");
+  value.textContent = pattern;
+  value.title = pattern;
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "removeRuleButton";
+  removeButton.textContent = "Remove";
+  removeButton.addEventListener("click", async () => {
+    const response = await withBusyState(async () => {
+      return chrome.runtime.sendMessage({
+        type: "removeExcludedUrlPattern",
+        pattern
+      });
+    });
+    elements.excludedUrlStatus.textContent = response?.ok
+      ? "URL exclusion removed."
+      : response?.error || "Unable to remove URL exclusion.";
+    await render();
+  });
+
+  item.append(value, removeButton);
   return item;
 }
 
@@ -132,6 +187,8 @@ function setDisabled(disabled) {
   elements.closeButton.disabled = disabled;
   elements.mergeGroupsButton.disabled = disabled;
   elements.saveDomainRuleButton.disabled = disabled;
+  elements.excludedUrlInput.disabled = disabled;
+  elements.addExcludedUrlButton.disabled = disabled;
 }
 
 function formatDuration(ms) {
